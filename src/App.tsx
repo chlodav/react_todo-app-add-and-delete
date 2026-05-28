@@ -3,34 +3,42 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import classNames from 'classnames';
-import { UserWarning } from './UserWarning';
 import { Todo } from './types/Todo';
 import { getTodos, addTodo, deleteTodo } from './api/todos';
 
 type FilterType = 'all' | 'active' | 'completed';
+type User = {
+  id: number;
+  email: string;
+};
 
-const getUserId = (): number => {
+const getStoredUser = (): User | null => {
   try {
     const user = localStorage.getItem('user');
 
-    return user ? JSON.parse(user).id : 0;
+    return user ? JSON.parse(user) : null;
   } catch {
-    return 0;
+    return null;
   }
 };
 
-const USER_ID = getUserId();
+const saveUser = (user: User): void => {
+  localStorage.setItem('user', JSON.stringify(user));
+};
 
 export const App: React.FC = () => {
+  const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [todos, setTodos] = useState<Todo[]>([]);
   const [filter, setFilter] = useState<FilterType>('all');
   const [errorMessage, setErrorMessage] = useState('');
   const [tempTodo, setTempTodo] = useState<Todo | null>(null);
   const [loadingIds, setLoadingIds] = useState<number[]>([]);
   const [newTodoTitle, setNewTodoTitle] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
   const [isInputDisabled, setIsInputDisabled] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const loginInputRef = useRef<HTMLInputElement>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showError = useCallback((message: string) => {
@@ -43,16 +51,46 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    getTodos(USER_ID)
+    if (!user) {
+      loginInputRef.current?.focus();
+
+      return;
+    }
+
+    getTodos(user.id)
       .then(setTodos)
       .catch(() => showError('Unable to load todos'));
-  }, [showError]);
+  }, [showError, user]);
 
   useEffect(() => {
+    if (!user) {
+      return;
+    }
+
     if (!isInputDisabled) {
       inputRef.current?.focus();
     }
-  }, [isInputDisabled]);
+  }, [isInputDisabled, user]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const trimmedEmail = loginEmail.trim();
+
+    if (!trimmedEmail) {
+      showError('Email should not be empty');
+
+      return;
+    }
+
+    const createdUser = {
+      id: 1,
+      email: trimmedEmail,
+    };
+
+    saveUser(createdUser);
+    setUser(createdUser);
+  };
 
   const filteredTodos = todos.filter(todo => {
     if (filter === 'active') {
@@ -86,7 +124,7 @@ export const App: React.FC = () => {
       setInputDisabled(true);
       setTempTodo({
         id: 0,
-        userId: USER_ID,
+        userId: user?.id ?? 0,
         title: trimmedTitle,
         completed: false,
       });
@@ -112,7 +150,7 @@ export const App: React.FC = () => {
 
     beginAddTodo(trimmedTitle);
 
-    addTodo({ userId: USER_ID, title: trimmedTitle, completed: false })
+    addTodo({ userId: user?.id ?? 0, title: trimmedTitle, completed: false })
       .then(created => {
         window.setTimeout(() => {
           setTodos(prev => [...prev, created]);
@@ -154,8 +192,62 @@ export const App: React.FC = () => {
     completedTodos.forEach(todo => handleDelete(todo.id));
   };
 
-  if (!USER_ID) {
-    return <UserWarning />;
+  if (!user) {
+    return (
+      <section className="section">
+        <form className="box mt-5" onSubmit={handleLogin}>
+          <h1 className="title is-3">Log in to open todos</h1>
+
+          <div className="field">
+            <label className="label" htmlFor="user-email">
+              Email
+            </label>
+            <div className="control has-icons-left">
+              <input
+                id="user-email"
+                ref={loginInputRef}
+                type="email"
+                className="input"
+                placeholder="Enter your email"
+                value={loginEmail}
+                onChange={e => setLoginEmail(e.target.value)}
+              />
+              <span className="icon is-small is-left">
+                <i className="fas fa-envelope" />
+              </span>
+            </div>
+          </div>
+
+          <div className="field">
+            <button type="submit" className="button is-primary">
+              Login
+            </button>
+          </div>
+
+          <div
+            data-cy="ErrorNotification"
+            className={classNames(
+              'notification is-danger is-light has-text-weight-normal',
+              { hidden: !errorMessage },
+            )}
+          >
+            <button
+              data-cy="HideErrorButton"
+              type="button"
+              className="delete"
+              onClick={() => {
+                if (errorTimerRef.current) {
+                  clearTimeout(errorTimerRef.current);
+                }
+
+                setErrorMessage('');
+              }}
+            />
+            {errorMessage}
+          </div>
+        </form>
+      </section>
+    );
   }
 
   return (
