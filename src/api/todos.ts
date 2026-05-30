@@ -1,6 +1,6 @@
 import { Todo } from '../types/Todo';
 
-const BASE_URL = 'https://mate.academy/students-projects/react-todo-app/api';
+const BASE_URL = 'https://mate.academy/students-api';
 
 function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   return fetch(BASE_URL + url, {
